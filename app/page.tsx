@@ -135,7 +135,7 @@ export default function Home() {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: `You are an expert scholarship researcher. Find 5 to 8 CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}". 
         Use Google Search to verify they are currently active for the upcoming academic year. 
         Focus heavily on fully funded opportunities.
@@ -210,7 +210,7 @@ export default function Home() {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: `Analyze this scholarship URL: ${urlToAnalyze}. Extract the requested information. Pay special attention to IELTS waivers for Nigerians and exact benefits.`,
         config: {
           tools: [{ urlContext: {} }],
