@@ -4,7 +4,48 @@ import { useState, useMemo } from 'react';
 import { Search, Loader2, CheckCircle2, XCircle, HelpCircle, GraduationCap, Globe, BookOpen, Plane, Coins, ListChecks, ExternalLink, Filter, ArrowRight, Calendar, MapPin, Building2, Sparkles } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
+
+const OPENROUTER_KEY = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || "";
+const GROQ_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || "";
+
+const openRouter = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: OPENROUTER_KEY,
+  dangerouslyAllowBrowser: true,
+});
+
+const groq = new OpenAI({
+  baseURL: "https://api.groq.com/openai/v1",
+  apiKey: GROQ_KEY,
+  dangerouslyAllowBrowser: true,
+});
+
+async function generateWithFallback(systemPrompt: string, userPrompt: string) {
+  try {
+    console.log("Trying OpenRouter...");
+    const response = await openRouter.chat.completions.create({
+      model: "meta-llama/llama-3-8b-instruct:free",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      response_format: { type: "json_object" },
+    });
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.warn("OpenRouter failed, falling back to Groq...", error);
+    const response = await groq.chat.completions.create({
+      model: "llama3-70b-8192",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      response_format: { type: "json_object" },
+    });
+    return response.choices[0].message.content;
+  }
+}
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -112,44 +153,33 @@ export default function Home() {
     const finalQuery = `Find active scholarships for Williams Alfred Onen.${reqString}`;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-      const schema = {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            name: { type: Type.STRING },
-            university: { type: Type.STRING },
-            country: { type: Type.STRING },
-            deadline: { type: Type.STRING, description: "Exact date or 'Rolling' or 'Unknown'" },
-            isFullyFunded: { type: Type.BOOLEAN },
-            ieltsRequired: { type: Type.BOOLEAN },
-            ieltsWaiverAvailable: { type: Type.BOOLEAN, description: "Can Nigerians get an IELTS waiver?" },
-            benefits: { type: Type.ARRAY, items: { type: Type.STRING }, description: "e.g., 'Tuition', 'Stipend', 'Flights', 'Accommodation', 'Health Insurance'" },
-            url: { type: Type.STRING, description: "Link to the scholarship" },
-            summary: { type: Type.STRING }
-          },
-          required: ["id", "name", "university", "country", "deadline", "isFullyFunded", "ieltsRequired", "ieltsWaiverAvailable", "benefits", "url", "summary"]
-        }
-      };
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `You are an expert scholarship researcher. Find 5 to 8 CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}". 
-        Use Google Search to verify they are currently active for the upcoming academic year. 
-        Focus heavily on fully funded opportunities.
-        If the user mentions they are Nigerian, specifically check if Nigerians are eligible and if an IELTS waiver is possible (e.g., via Medium of Instruction letter).`,
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          temperature: 0.2
-        }
-      });
+      const systemPrompt = `You are an expert scholarship researcher. Return a JSON object with a single key "scholarships" containing an array of 5 to 8 scholarships matching the user's query.
+      Each scholarship must have these exact keys:
+      - id (string, generate a unique ID)
+      - name (string)
+      - university (string)
+      - country (string)
+      - deadline (string, exact date or 'Rolling' or 'Unknown')
+      - isFullyFunded (boolean)
+      - ieltsRequired (boolean or null)
+      - ieltsWaiverAvailable (boolean)
+      - benefits (array of strings)
+      - url (string, link to the scholarship)
+      - summary (string)
       
-      const results = JSON.parse(response.text || '[]');
-      setSearchResults(results);
+      Output ONLY valid JSON. Do not include markdown formatting like \`\`\`json.`;
+
+      const userPrompt = `Find CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}".
+      Focus heavily on fully funded opportunities.
+      If the user mentions they are Nigerian, specifically check if Nigerians are eligible and if an IELTS waiver is possible.`;
+
+      const responseText = await generateWithFallback(systemPrompt, userPrompt);
+      
+      // Clean up potential markdown from models that ignore the instruction
+      const cleanedText = responseText?.replace(/```json/g, '').replace(/```/g, '').trim() || '{}';
+      const parsed = JSON.parse(cleanedText);
+      setSearchResults(parsed.scholarships || []);
+      
       // Reset filters on new search
       setSelectedCountries([]);
       setSelectedBenefits([]);
@@ -176,50 +206,37 @@ export default function Home() {
     setAnalyzeData(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-      
-      const actionableItemSchema = {
-        type: Type.OBJECT,
-        properties: {
-          text: { type: Type.STRING },
-          link: { type: Type.STRING, description: "Direct hyperlink to acquire this or complete this step, if applicable online. Leave empty if not applicable." }
-        },
-        required: ["text"]
-      };
+      let urlContent = "";
+      try {
+        const res = await fetch('/api/fetch', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: urlToAnalyze }) 
+        });
+        const data = await res.json();
+        urlContent = data.text || "";
+      } catch (e) {
+        console.warn("Could not fetch URL content directly");
+      }
 
-      const schema = {
-        type: Type.OBJECT,
-        properties: {
-          phdIncluded: { type: Type.BOOLEAN, description: "Does the scholarship include PhD?" },
-          nigerianEligible: { type: Type.BOOLEAN, description: "Can a Nigerian apply?" },
-          ieltsRequired: { type: Type.BOOLEAN, description: "Is IELTS required?" },
-          ieltsWaiverAvailable: { type: Type.BOOLEAN, description: "Can Nigerians get an IELTS waiver (e.g. MOI letter)?" },
-          requirements: { type: Type.ARRAY, items: actionableItemSchema, description: "What one needs to have before applying" },
-          benefits: {
-            type: Type.OBJECT,
-            properties: {
-              travelFare: { type: Type.BOOLEAN },
-              stipends: { type: Type.BOOLEAN },
-              otherCovers: { type: Type.ARRAY, items: { type: Type.STRING } }
-            }
-          },
-          stepByStepGuide: { type: Type.ARRAY, items: actionableItemSchema, description: "Step by step guide on how to apply, explained like to a 10-year old" },
-          summary: { type: Type.STRING, description: "Brief summary of the scholarship" }
-        },
-        required: ["phdIncluded", "nigerianEligible", "ieltsRequired", "ieltsWaiverAvailable", "requirements", "benefits", "stepByStepGuide", "summary"]
-      };
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this scholarship URL: ${urlToAnalyze}. Extract the requested information. Pay special attention to IELTS waivers for Nigerians and exact benefits.`,
-        config: {
-          tools: [{ urlContext: {} }],
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-        }
-      });
+      const systemPrompt = `You are an expert scholarship analyzer. Return a JSON object with the following exact keys analyzing the provided text/URL:
+      - phdIncluded (boolean or null)
+      - nigerianEligible (boolean or null)
+      - ieltsRequired (boolean or null)
+      - ieltsWaiverAvailable (boolean or null)
+      - requirements (array of objects with "text" and optional "link" strings)
+      - benefits (object with "travelFare" (boolean), "stipends" (boolean), and "otherCovers" (array of strings))
+      - stepByStepGuide (array of objects with "text" and optional "link" strings)
+      - summary (string)
       
-      setAnalyzeData(JSON.parse(response.text || '{}'));
+      Output ONLY valid JSON. Do not include markdown formatting like \`\`\`json.`;
+
+      const userPrompt = `Analyze this scholarship URL: ${urlToAnalyze}\n\nWebsite Content (if available):\n${urlContent.substring(0, 10000)}\n\nExtract the requested information. Pay special attention to IELTS waivers for Nigerians and exact benefits.`;
+
+      const responseText = await generateWithFallback(systemPrompt, userPrompt);
+      
+      const cleanedText = responseText?.replace(/```json/g, '').replace(/```/g, '').trim() || '{}';
+      setAnalyzeData(JSON.parse(cleanedText));
     } catch (err: any) {
       console.error(err);
       setAnalyzeError(err.message || 'An unexpected error occurred while analyzing the scholarship.');
@@ -280,7 +297,7 @@ export default function Home() {
               FindMyScholarship
             </h1>
             <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
-              Powered by Gemini. We search the web for active, fully funded scholarships matching your exact profile.
+              Powered by advanced AI. We search for active, fully funded scholarships matching your exact profile.
             </p>
             
             <div className="max-w-4xl mx-auto text-left mb-8 bg-gray-50 p-6 rounded-xl border border-gray-100">
