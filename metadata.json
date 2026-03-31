@@ -1,0 +1,5 @@
+{
+  "name": "FindMyScholarship",
+  "description": "An AI-powered app that analyzes scholarship URLs to extract requirements, eligibility, benefits, and a step-by-step guide.",
+  "requestFramePermissions": []
+}
