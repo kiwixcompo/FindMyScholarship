@@ -142,7 +142,7 @@ export default function Home() {
       - ieltsRequired (boolean or null)
       - ieltsWaiverAvailable (boolean)
       - benefits (array of strings)
-      - url (string, link to the scholarship)
+      - url (string, MUST be a real, working link. If you do not know the exact official URL, DO NOT hallucinate one. Instead, return a Google Search link formatted exactly like this: "https://www.google.com/search?q=" followed by the scholarship name and university, with spaces replaced by '+')
       - summary (string)
       
       Output ONLY valid JSON. Do not include markdown formatting like \`\`\`json.`;
