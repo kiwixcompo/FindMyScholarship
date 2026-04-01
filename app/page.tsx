@@ -6,45 +6,20 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import OpenAI from 'openai';
 
-const OPENROUTER_KEY = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || "";
-const GROQ_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || "";
-
-const openRouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: OPENROUTER_KEY,
-  dangerouslyAllowBrowser: true,
-});
-
-const groq = new OpenAI({
-  baseURL: "https://api.groq.com/openai/v1",
-  apiKey: GROQ_KEY,
-  dangerouslyAllowBrowser: true,
-});
-
 async function generateWithFallback(systemPrompt: string, userPrompt: string) {
-  try {
-    console.log("Trying OpenRouter...");
-    const response = await openRouter.chat.completions.create({
-      model: "meta-llama/llama-3-8b-instruct:free",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-    });
-    return response.choices[0].message.content;
-  } catch (error) {
-    console.warn("OpenRouter failed, falling back to Groq...", error);
-    const response = await groq.chat.completions.create({
-      model: "llama3-70b-8192",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-    });
-    return response.choices[0].message.content;
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, userPrompt })
+  });
+  
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Failed to generate content");
   }
+  
+  const data = await res.json();
+  return data.text;
 }
 
 function cn(...inputs: ClassValue[]) {
