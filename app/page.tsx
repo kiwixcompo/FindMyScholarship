@@ -7,29 +7,19 @@ import { twMerge } from 'tailwind-merge';
 import { GoogleGenAI } from '@google/genai';
 
 async function generateWithFallback(systemPrompt: string, userPrompt: string) {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Gemini API key is missing. Please ensure NEXT_PUBLIC_GEMINI_API_KEY is set in your environment variables.");
-  }
-  
-  const ai = new GoogleGenAI({ apiKey });
-  
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: userPrompt,
-    config: {
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      tools: [{ googleSearch: {} }],
-      toolConfig: { includeServerSideToolInvocations: true }
-    }
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, userPrompt })
   });
   
-  if (!response.text) {
-    throw new Error("Failed to generate content");
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Failed to generate content");
   }
   
-  return response.text;
+  const data = await res.json();
+  return data.text;
 }
 
 function cn(...inputs: ClassValue[]) {
