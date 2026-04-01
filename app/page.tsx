@@ -4,22 +4,32 @@ import { useState, useMemo } from 'react';
 import { Search, Loader2, CheckCircle2, XCircle, HelpCircle, GraduationCap, Globe, BookOpen, Plane, Coins, ListChecks, ExternalLink, Filter, ArrowRight, Calendar, MapPin, Building2, Sparkles } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 
 async function generateWithFallback(systemPrompt: string, userPrompt: string) {
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ systemPrompt, userPrompt })
-  });
-  
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Failed to generate content");
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Gemini API key is missing. Please ensure NEXT_PUBLIC_GEMINI_API_KEY is set in your environment variables.");
   }
   
-  const data = await res.json();
-  return data.text;
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-pro-preview",
+    contents: userPrompt,
+    config: {
+      systemInstruction: systemPrompt,
+      responseMimeType: "application/json",
+      tools: [{ googleSearch: {} }],
+      toolConfig: { includeServerSideToolInvocations: true }
+    }
+  });
+  
+  if (!response.text) {
+    throw new Error("Failed to generate content");
+  }
+  
+  return response.text;
 }
 
 function cn(...inputs: ClassValue[]) {
@@ -127,14 +137,17 @@ export default function Home() {
     const reqString = reqs.length > 0 ? ` Specific requirements: ${reqs.join(', ')}.` : '';
     const finalQuery = `Find active scholarships for Williams Alfred Onen.${reqString}`;
 
+    const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentYear = new Date().getFullYear();
+
     try {
-      const systemPrompt = `You are an expert scholarship researcher. Return a JSON object with a single key "scholarships" containing an array of 5 to 8 scholarships matching the user's query.
+      const systemPrompt = `You are an expert scholarship researcher. The current date is ${currentDate}. Return a JSON object with a single key "scholarships" containing an array of 5 to 8 scholarships matching the user's query.
       Each scholarship must have these exact keys:
       - id (string, generate a unique ID)
       - name (string)
       - university (string)
       - country (string)
-      - deadline (string, exact date or 'Rolling' or 'Unknown')
+      - deadline (string, exact date or 'Rolling' or 'Unknown'. MUST be in ${currentYear} or later, strictly after ${currentDate})
       - isFullyFunded (boolean)
       - ieltsRequired (boolean or null)
       - ieltsWaiverAvailable (boolean)
@@ -144,7 +157,8 @@ export default function Home() {
       
       Output ONLY valid JSON. Do not include markdown formatting like \`\`\`json.`;
 
-      const userPrompt = `Find CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}".
+      const userPrompt = `USE GOOGLE SEARCH to find CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}".
+      The current year is ${currentYear}. DO NOT return any scholarships that expired in 2024, 2025, or any date before ${currentDate}.
       Focus heavily on fully funded opportunities.
       If the user mentions they are Nigerian, specifically check if Nigerians are eligible and if an IELTS waiver is possible.`;
 
@@ -442,13 +456,17 @@ export default function Home() {
                           <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
                             <span className="flex items-center gap-1"><Building2 className="w-4 h-4" /> {res.university}</span>
                             <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {res.country}</span>
-                            <span className="flex items-center gap-1 text-orange-600 font-medium"><Calendar className="w-4 h-4" /> {res.deadline}</span>
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 sm:justify-end">
                           {res.isFullyFunded && <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">Fully Funded</span>}
                           {res.ieltsWaiverAvailable && <span className="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">IELTS Waiver</span>}
                         </div>
+                      </div>
+                      
+                      <div className="mb-5 inline-flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg shadow-sm">
+                        <Calendar className="w-5 h-5" />
+                        <span className="font-bold text-sm tracking-wide uppercase">Application Closes: {res.deadline}</span>
                       </div>
                       
                       <p className="text-gray-700 text-sm mb-5 line-clamp-2">{res.summary}</p>
