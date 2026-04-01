@@ -142,14 +142,15 @@ export default function Home() {
       - ieltsRequired (boolean or null)
       - ieltsWaiverAvailable (boolean)
       - benefits (array of strings)
-      - url (string, MUST be a real, working link. If you do not know the exact official URL, DO NOT hallucinate one. Instead, return a Google Search link formatted exactly like this: "https://www.google.com/search?q=" followed by the scholarship name and university, with spaces replaced by '+')
+      - url (string, MUST be the EXACT, OFFICIAL direct URL to the scholarship application or details page. DO NOT hallucinate or guess URLs. DO NOT return Google search links. If you do not know the exact official URL, DO NOT include that scholarship in your response at all.)
       - summary (string)
       
       Output ONLY valid JSON. Do not include markdown formatting like \`\`\`json.`;
 
-      const userPrompt = `USE GOOGLE SEARCH to find CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}".
+      const userPrompt = `Find CURRENT, NON-EXPIRED scholarships matching this query: "${finalQuery}".
       The current year is ${currentYear}. DO NOT return any scholarships that expired in 2024, 2025, or any date before ${currentDate}.
-      Focus heavily on fully funded opportunities.
+      Focus heavily on fully funded opportunities. 
+      Provide highly accurate, direct links to well-known, recurring fully-funded scholarships (e.g., Chevening, Erasmus Mundus, DAAD, Gates Cambridge, Fulbright, specific university merit scholarships) that are currently open or opening soon in ${currentYear}.
       If the user mentions they are Nigerian, specifically check if Nigerians are eligible and if an IELTS waiver is possible.`;
 
       const responseText = await generateWithFallback(systemPrompt, userPrompt);
