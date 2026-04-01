@@ -22,6 +22,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompts" }, { status: 400 });
     }
 
+    // Groq requires the prompt to explicitly mention "JSON" when using response_format: { type: "json_object" }
+    const finalSystemPrompt = systemPrompt + "\n\nPlease return your response in JSON format.";
+
     if (!OPENROUTER_KEY && !GROQ_KEY) {
       return NextResponse.json({ error: "API keys are not configured in environment variables." }, { status: 500 });
     }
@@ -29,9 +32,9 @@ export async function POST(req: Request) {
     try {
       console.log("Trying OpenRouter...");
       const response = await openRouter.chat.completions.create({
-        model: "google/gemma-2-9b-it:free", // Highly reliable free model on OpenRouter
+        model: "google/gemini-2.0-flash-lite-preview-02-05:free", // Highly reliable free model on OpenRouter
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: finalSystemPrompt },
           { role: "user", content: userPrompt }
         ],
         response_format: { type: "json_object" },
@@ -45,9 +48,9 @@ export async function POST(req: Request) {
       }
 
       const response = await groq.chat.completions.create({
-        model: "llama3-70b-8192",
+        model: "llama-3.3-70b-versatile",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: finalSystemPrompt },
           { role: "user", content: userPrompt }
         ],
         response_format: { type: "json_object" },
